@@ -1,0 +1,59 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Pytest Unit Tests
+        run: |
+          pytest -v tests/test_api.py
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: python-service:${{ github.sha }}
+          load: true
+
+      - name: Start services with Docker Compose
+        run: |
+          cp .env.example .env
+          docker compose up -d
+
+      - name: Run Testinfra Infrastructure Tests
+        run: |
+          pytest -v tests/test_infra.py
+        continue-on-error: false
+
+      - name: Upload Logs and Test Reports as Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-logs-and-reports
+          path: |
+            *.log
